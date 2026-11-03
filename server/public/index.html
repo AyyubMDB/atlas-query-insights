@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Atlas Query Profiler</title>
+  <!--
+    MongoDB's product typography (mongodb.design/component/typography) uses
+    "Euclid Circular A" for body copy and "Source Code Pro" for numbers/code.
+    Euclid Circular A is a licensed commercial font we can't redistribute, so
+    it's listed first in the CSS font stack (used automatically if it's ever
+    installed locally, e.g. on a MongoDB-issued machine) with Poppins as the
+    closest freely-licensed fallback. Source Code Pro is open-source and
+    loaded for real below, exactly as MongoDB's own guidelines specify for
+    small numbers/units.
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1>Query Profiler</h1>
+    <div class="topbar-controls">
+      <label>
+        Cluster
+        <select id="clusterSelect"></select>
+      </label>
+      <button id="refreshBtn" title="Re-run filters">Refresh</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="filters" id="filters">
+      <div class="filter-group">
+        <label>Namespace</label>
+        <select id="namespaceFilter" multiple size="4"></select>
+      </div>
+      <div class="filter-group">
+        <label>Op Type</label>
+        <select id="opTypeFilter" multiple size="4"></select>
+      </div>
+      <div class="filter-group">
+        <label>App Name</label>
+        <select id="appNameFilter" multiple size="4"></select>
+      </div>
+      <div class="filter-group">
+        <label>Host</label>
+        <select id="hostFilter" multiple size="4"></select>
+      </div>
+      <div class="filter-group checkboxes">
+        <label><input type="checkbox" id="collscanOnly" /> COLLSCAN only</label>
+        <label><input type="checkbox" id="noIndexOnly" /> No index coverage only</label>
+      </div>
+      <div class="filter-group grow">
+        <label>Search (namespace / app / query text)</label>
+        <input type="text" id="searchBox" placeholder="e.g. status: pending" />
+      </div>
+      <div class="filter-actions">
+        <button id="applyBtn" class="primary">Apply Filters</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+    </section>
+
+    <section class="summary" id="summaryCards"></section>
+
+    <section class="chart-section">
+      <div class="chart-header">
+        <h2>Execution Time Over Time</h2>
+        <span class="hint">Colored by namespace — click a legend item to isolate it, click a point to inspect that operation. Thick red outline = COLLSCAN.</span>
+      </div>
+      <canvas id="scatterChart" height="90"></canvas>
+    </section>
+
+    <section class="table-section">
+      <div class="table-header">
+        <h2>Slow Queries</h2>
+        <div class="table-controls">
+          <label>
+            Page size
+            <select id="pageSizeSelect">
+              <option>25</option>
+              <option>50</option>
+              <option>100</option>
+              <option>200</option>
+            </select>
+          </label>
+          <div class="pager">
+            <button id="prevPageBtn">&larr; Prev</button>
+            <span id="pageIndicator">Page 1</span>
+            <button id="nextPageBtn">Next &rarr;</button>
+          </div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="samplesTable">
+          <thead>
+            <tr>
+              <th data-sort="loggedAt">Time</th>
+              <th data-sort="namespace">Namespace</th>
+              <th data-sort="opType">Op</th>
+              <th data-sort="operationExecutionTimeMs">Exec ms</th>
+              <th data-sort="docsExamined">Docs Examined</th>
+              <th data-sort="docsReturned">Docs Returned</th>
+              <th data-sort="docsExaminedReturnedRatio">Ratio</th>
+              <th>Plan</th>
+              <th>Index?</th>
+              <th>App</th>
+            </tr>
+          </thead>
+          <tbody id="samplesBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <aside id="detailPanel" class="detail-panel hidden">
+    <div class="detail-header">
+      <h2>Operation Detail</h2>
+      <button id="closeDetailBtn">&times;</button>
+    </div>
+    <div id="detailContent" class="detail-content">Select a query to inspect it.</div>
+  </aside>
+  <div id="detailOverlay" class="detail-overlay hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

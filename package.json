@@ -1,0 +1,31 @@
+{
+  "name": "atlas-query-insights",
+  "version": "1.0.0",
+  "description": "Pulls MongoDB Atlas Query Profiler / Performance Advisor data (slow queries with exact query text, suggested indexes, schema advice) via the Atlas Admin API using a read-only Project API Key (no SSO / cluster user access required), with an optional local web UI for filtering/sorting/drilling into individual operations.",
+  "type": "module",
+  "main": "src/index.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AyyubMDB/atlas-query-insights.git"
+  },
+  "scripts": {
+    "profile": "node src/profiler.js",
+    "profile:watch": "node src/scheduler.js",
+    "collect:full": "node src/index.js",
+    "ui": "node server/index.js",
+    "seed:demo": "node scripts/seed-demo.js",
+    "clear-cluster": "node scripts/clear-cluster.js"
+  },
+  "dependencies": {
+    "digest-fetch": "^3.1.1",
+    "dotenv": "^16.4.5",
+    "express": "^5.2.1",
+    "mongodb": "^7.6.0",
+    "node-cron": "^3.0.3",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
