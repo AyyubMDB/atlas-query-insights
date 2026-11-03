@@ -63,10 +63,26 @@ https://www.mongodb.com/docs/atlas/configure-api-access/
 6. Send you the Public Key, Private Key, Project ID (`groupId`, visible
    in Project Settings), and the cluster name(s).
 
-No SSO login, no cluster database user, no VPN/peering is required. The
-Admin API is only reachable over the public internet (not via VPC
-peering/private endpoints), so this also works if you're outside their
-network.
+That's everything needed for the CSV/JSON/`report.md` collector — no SSO
+login, no cluster database user, no VPN/peering required. The Admin API
+is only reachable over the public internet (not via VPC peering/private
+endpoints), so this also works if you're outside their network.
+
+**If you also want the [web UI](#web-ui-filter-sort-drill-into-a-query)**,
+one more thing is needed — a normal database user (the Admin API key above
+only grants REST API access, not a database connection), scoped to a
+dedicated database so it never touches their real data:
+
+7. Atlas UI → **Database Access** → **Add New Database User** → username
+   e.g. `query_profiler_ui`, authentication method password, and under
+   **Specific Privileges** grant `readWrite` on database
+   `atlas_query_insights` only (not `readWriteAnyDatabase`).
+8. Atlas UI → **Network Access** → add your IP (this list is separate from
+   the API key's own Access List from step 5).
+9. Send you the resulting `mongodb+srv://` connection string for that user.
+
+This keeps all collected query data on **their own infrastructure** —
+nothing is copied to a cluster you control.
 
 ## What the Query Profiler collector gives you
 
@@ -174,16 +190,23 @@ namespaces) is also printed after each run.
 
 `report.md` stays as-is for a static/shareable summary. For interactive
 work — filter by namespace/opType/app, sort any column, click a point on
-a time-vs-execution-time scatter chart, and open a detail panel for a
-single operation (exact query + full metrics + raw log line) — there's a
-small local web app in `server/`.
+a time-vs-execution-time scatter chart colored by namespace, and open a
+detail panel for a single operation (exact query + full metrics + raw log
+line) — there's a small local web app in `server/`.
 
 It's read-only and separate from the collector: `npm run profile` writes
-samples into **your own MongoDB cluster** (`ATLAS_STORAGE_URI` — not the
-customer's), and the UI just queries that collection.
+samples into `ATLAS_STORAGE_URI`, and the UI just queries that collection.
+
+**Point `ATLAS_STORAGE_URI` at a dedicated database on the customer's own
+cluster** (see the `.env.example` comments and the customer setup steps
+above) so collected query data stays on their infrastructure rather than
+flowing to a cluster you control. A single small cluster can hold storage
+databases for multiple customers, each scoped to its own database user —
+just set a different `ATLAS_STORAGE_DB`/`ATLAS_STORAGE_COLLECTION` (or a
+whole separate `ATLAS_STORAGE_URI`) per customer in each customer's run.
 
 ```sh
-# 1. Point ATLAS_STORAGE_URI at a cluster you control (see .env.example)
+# 1. Set ATLAS_STORAGE_URI to the customer's dedicated storage database (see .env.example)
 # 2. Either collect real data...
 npm run profile
 # ...or try it immediately with synthetic demo data:
@@ -196,22 +219,25 @@ npm run ui
 
 What it gives you (deliberately mirroring Atlas's own Query Profiler UX):
 
-- **Filter bar**: namespace, op type, app name, host, min/max execution
-  time, COLLSCAN-only, no-index-coverage-only, free-text search (matches
-  namespace/app/exact query text)
+- **Filter bar**: namespace, op type, app name, host, COLLSCAN-only,
+  no-index-coverage-only, free-text search (matches namespace/app/exact
+  query text)
 - **Summary cards**: total samples, COLLSCAN rate, in-memory sort count,
   no-index-coverage count, avg/p95/p99 execution time — computed with the
   same `analyze.js` logic that generates `report.md`, so numbers always
   match
-- **Scatter chart**: execution time vs. time logged, red = COLLSCAN;
-  click a point to open its detail panel
+- **Scatter chart**: execution time vs. time logged, one color per
+  namespace (click a legend entry to isolate it) with a red outline on
+  COLLSCAN points; click a point to open its detail panel
 - **Sortable table**: click any column header to sort (execution time,
   docs examined/returned, ratio, namespace, etc.), with pagination
 - **Detail panel**: click any row (or chart point) to see every metric,
   the **exact query executed** (pretty-printed JSON), and the raw mongod
   log line
 
-Data flow: `Atlas Admin API → profiler.js → your MongoDB cluster → Express API (server/index.js) → static frontend (server/public/)`.
+Data flow: `Atlas Admin API → profiler.js → customer's MongoDB cluster (dedicated database) → Express API (server/index.js) → static frontend (server/public/)`.
+`server/index.js` itself still runs locally on your laptop; only the data
+storage moved to the customer's infrastructure.
 Samples are upserted by a stable hash of `(processId, raw log line)`, so
 re-running the collector over overlapping time windows never creates
 duplicates.
@@ -261,23 +287,24 @@ using `GET /groups/{groupId}/clusters/{clusterName}/performanceAdvisor/*`.
   `Project Data Access Read Only`). Do not request write roles.
 - Slow query data can contain sensitive field values (that's the point —
   you need them to debug queries). Treat exported JSON/CSV files, and the
-  storage cluster/collection, with the same sensitivity as the customer's
-  data.
+  storage database, with the same sensitivity as the customer's data.
 - Ask the customer to set an expiration / rotate the key periodically,
   and to scope the IP access list to your egress IP(s).
 - The Admin API key cannot run ad-hoc reads/writes against their
   database — only metadata, metrics, and whatever already landed in the
   slow query log. This is by design and is the safest way to get this
   data without full cluster access.
-- **`ATLAS_STORAGE_URI` credentials are as sensitive as any other database
-  password.** Anything pasted into a chat/terminal history, ticket, or
-  Slack message should be treated as compromised — rotate that database
-  user's password in Atlas (Database Access → Edit User → Edit Password)
-  after testing, and going forward pass secrets only through `.env` files
-  or a secrets manager, never in plain chat.
-- Use a dedicated database user scoped to only `ATLAS_STORAGE_DB` (not an
-  admin/all-database user) for the storage cluster, since `server/`
-  exposes this data over a local HTTP API.
+- **Storage is on the customer's own cluster by design** — collected
+  query data (including real filter values) never has to leave their
+  infrastructure or land in anything you host. Make sure the database
+  user they create for `ATLAS_STORAGE_URI` is scoped via "Specific
+  Privileges" to `readWrite` on only `ATLAS_STORAGE_DB`, never
+  `readWriteAnyDatabase` or an admin role.
+- **Any credential (API key or database password) pasted into chat,
+  tickets, or Slack should be treated as compromised.** Rotate it in
+  Atlas afterward (API Keys page, or Database Access → Edit User → Edit
+  Password) and pass secrets only through `.env` files or a secrets
+  manager going forward.
 - `server/index.js` has no authentication layer by design — it's meant
   for single-user, local-laptop use only. It binds to `127.0.0.1` by
   default (not `0.0.0.0`), so it isn't reachable from the network even on
